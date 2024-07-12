@@ -1,37 +1,38 @@
-from django.contrib.auth import authenticate
-from django.http import JsonResponse
-from rest_framework.authtoken.models import Token
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .serializers import UserSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
+from .serializers import RegisterSerializer, UserSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth import get_user_model
 
 
-class RegisterView(APIView):
-    def post(self, request):
-        serializer = UserSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            token = Token.objects.create(user=user)
-            return Response({'token': token.key})
-        else:
-            return Response(serializer.errors, status=400)
+User = get_user_model()
 
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = (permissions.AllowAny,)
+    serializer_class = RegisterSerializer
 
-class LoginView(APIView):
-    def post(self, request):
-        username = request.data.get('email')
-        password = request.data.get('password')
-        user = authenticate(request, username=username, password=password)
-        if user is not None:
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({'token': token.key})
-        else:
-            return Response({'error': 'Invalid Credentials'}, status=400)
-
-class MeView(APIView):
-    permission_classes = [IsAuthenticated]
+class UserDetailView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
         user = request.user
-        return JsonResponse({'id': user.id, 'email': user.email})
+        serializer = UserSerializer(user)
+        return Response(serializer.data)
+
+User = get_user_model()
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # 添加自定义声明
+        token['email'] = user.email
+        return token
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
